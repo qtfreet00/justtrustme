@@ -10,7 +10,11 @@ import org.apache.http.conn.scheme.HostNameResolver;
 import org.apache.http.conn.ssl.SSLSocketFactory;
 
 import java.io.IOException;
+import java.lang.reflect.Method;
+import java.net.Proxy;
 import java.net.Socket;
+import java.net.URL;
+import java.net.URLConnection;
 import java.net.UnknownHostException;
 import java.security.KeyManagementException;
 import java.security.KeyStore;
@@ -33,6 +37,7 @@ import javax.net.ssl.X509TrustManager;
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XC_MethodReplacement;
+import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
 
 import static de.robv.android.xposed.XposedHelpers.callMethod;
@@ -210,6 +215,7 @@ public class Main implements IXposedHookLoadPackage {
                         processOkHttp(context.getClassLoader());
                         processHttpClientAndroidLib(context.getClassLoader());
                         processXutils(context.getClassLoader());
+                        processUrlConnection();
                     }
                 }
         );
@@ -475,5 +481,19 @@ public class Main implements IXposedHookLoadPackage {
         public Socket createSocket() throws IOException {
             return sslContext.getSocketFactory().createSocket();
         }
+    }
+
+    private static void processUrlConnection() {
+        XposedHelpers.findAndHookMethod(URL.class, "openConnection", Proxy.class, new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                super.afterHookedMethod(param);
+                Class<?> c = param.thisObject.getClass();
+                Method openConnection = c.getMethod("openConnection");
+                URLConnection invoke = (URLConnection) openConnection.invoke(param.thisObject);
+                param.setResult(invoke);
+            }
+        });
+
     }
 }
