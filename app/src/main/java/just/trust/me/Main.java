@@ -6,16 +6,8 @@ import android.util.Log;
 import android.webkit.SslErrorHandler;
 import android.webkit.WebView;
 
-import org.apache.http.conn.ClientConnectionManager;
 import org.apache.http.conn.scheme.HostNameResolver;
-import org.apache.http.conn.scheme.PlainSocketFactory;
-import org.apache.http.conn.scheme.Scheme;
-import org.apache.http.conn.scheme.SchemeRegistry;
 import org.apache.http.conn.ssl.SSLSocketFactory;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.impl.conn.SingleClientConnManager;
-import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
-import org.apache.http.params.HttpParams;
 
 import java.io.IOException;
 import java.net.Socket;
@@ -55,52 +47,11 @@ import static de.robv.android.xposed.XposedHelpers.setObjectField;
 public class Main implements IXposedHookLoadPackage {
 
     private static final String TAG = "JustTrustMe";
-    String currentPackageName = "";
+    private String currentPackageName = "";
 
     public void handleLoadPackage(final LoadPackageParam lpparam) throws Throwable {
 
         currentPackageName = lpparam.packageName;
-
-
-
-        /* Apache Hooks */
-        /* external/apache-http/src/org/apache/http/impl/client/DefaultHttpClient.java */
-        /* public DefaultHttpClient() */
-        Log.d(TAG, "Hooking DefaultHTTPClient for: " + currentPackageName);
-        findAndHookConstructor(DefaultHttpClient.class, new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-
-                setObjectField(param.thisObject, "defaultParams", null);
-                setObjectField(param.thisObject, "connManager", getSCCM());
-            }
-        });
-
-        /* external/apache-http/src/org/apache/http/impl/client/DefaultHttpClient.java */
-        /* public DefaultHttpClient(HttpParams params) */
-        Log.d(TAG, "Hooking DefaultHTTPClient(HttpParams) for: " + currentPackageName);
-        findAndHookConstructor(DefaultHttpClient.class, HttpParams.class, new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-
-                setObjectField(param.thisObject, "defaultParams", (HttpParams) param.args[0]);
-                setObjectField(param.thisObject, "connManager", getSCCM());
-            }
-        });
-
-        /* external/apache-http/src/org/apache/http/impl/client/DefaultHttpClient.java */
-        /* public DefaultHttpClient(ClientConnectionManager conman, HttpParams params) */
-        Log.d(TAG, "Hooking DefaultHTTPClient(ClientConnectionManager, HttpParams) for: " + currentPackageName);
-        findAndHookConstructor(DefaultHttpClient.class, ClientConnectionManager.class, HttpParams.class, new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-
-                HttpParams params = (HttpParams) param.args[1];
-
-                setObjectField(param.thisObject, "defaultParams", params);
-                setObjectField(param.thisObject, "connManager", getCCM(param.args[0], params));
-            }
-        });
 
         /* external/apache-http/src/org/apache/http/conn/ssl/SSLSocketFactory.java */
         /* public SSLSocketFactory( ... ) */
@@ -309,7 +260,7 @@ public class Main implements IXposedHookLoadPackage {
 
     /* Helpers */
     // Check for TrustManagerImpl class
-    public boolean hasTrustManagerImpl() {
+    private boolean hasTrustManagerImpl() {
 
         try {
             Class.forName("com.android.org.conscrypt.TrustManagerImpl");
@@ -331,69 +282,6 @@ public class Main implements IXposedHookLoadPackage {
         }
     }
 
-    //Create a SingleClientConnManager that trusts everyone!
-    public ClientConnectionManager getSCCM() {
-
-        KeyStore trustStore;
-        try {
-
-            trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
-            trustStore.load(null, null);
-
-            SSLSocketFactory sf = new TrustAllSSLSocketFactory(trustStore);
-            sf.setHostnameVerifier(SSLSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
-
-            SchemeRegistry registry = new SchemeRegistry();
-            registry.register(new Scheme("http", PlainSocketFactory.getSocketFactory(), 80));
-            registry.register(new Scheme("https", sf, 443));
-
-            ClientConnectionManager ccm = new SingleClientConnManager(null, registry);
-
-            return ccm;
-
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    //This function creates a ThreadSafeClientConnManager that trusts everyone!
-    public ClientConnectionManager getTSCCM(HttpParams params) {
-
-        KeyStore trustStore;
-        try {
-
-            trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
-            trustStore.load(null, null);
-
-            SSLSocketFactory sf = new TrustAllSSLSocketFactory(trustStore);
-            sf.setHostnameVerifier(SSLSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
-
-            SchemeRegistry registry = new SchemeRegistry();
-            registry.register(new Scheme("http", PlainSocketFactory.getSocketFactory(), 80));
-            registry.register(new Scheme("https", sf, 443));
-
-            ClientConnectionManager ccm = new ThreadSafeClientConnManager(params, registry);
-
-            return ccm;
-
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    //This function determines what object we are dealing with.
-    public ClientConnectionManager getCCM(Object o, HttpParams params) {
-
-        String className = o.getClass().getSimpleName();
-
-        if (className.equals("SingleClientConnManager")) {
-            return getSCCM();
-        } else if (className.equals("ThreadSafeClientConnManager")) {
-            return getTSCCM(params);
-        }
-
-        return null;
-    }
 
     private void processXutils(ClassLoader classLoader) {
         Log.d(TAG, "Hooking org.xutils.http.RequestParams.setSslSocketFactory(SSLSocketFactory) (3) for: " + currentPackageName);
@@ -418,7 +306,7 @@ public class Main implements IXposedHookLoadPackage {
         }
     }
 
-    void processOkHttp(ClassLoader classLoader) {
+    private void processOkHttp(ClassLoader classLoader) {
         /* hooking OKHTTP by SQUAREUP */
         /* com/squareup/okhttp/CertificatePinner.java available online @ https://github.com/square/okhttp/blob/master/okhttp/src/main/java/com/squareup/okhttp/CertificatePinner.java */
         /* public void check(String hostname, List<Certificate> peerCertificates) throws SSLPeerUnverifiedException{}*/
@@ -504,7 +392,7 @@ public class Main implements IXposedHookLoadPackage {
         }
     }
 
-    void processHttpClientAndroidLib(ClassLoader classLoader) {
+    private void processHttpClientAndroidLib(ClassLoader classLoader) {
         /* httpclientandroidlib Hooks */
         /* public final void verify(String host, String[] cns, String[] subjectAlts, boolean strictWithSubDomains) throws SSLException */
         Log.d(TAG, "Hooking AbstractVerifier.verify(String, String[], String[], boolean) for: " + currentPackageName);
@@ -525,7 +413,7 @@ public class Main implements IXposedHookLoadPackage {
         }
     }
 
-    private class ImSureItsLegitTrustManager implements X509TrustManager {
+    private static class ImSureItsLegitTrustManager implements X509TrustManager {
         @Override
         public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
         }
@@ -534,10 +422,10 @@ public class Main implements IXposedHookLoadPackage {
         public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
         }
 
-	public List<X509Certificate> checkServerTrusted(X509Certificate[] chain, String authType, String host) throws CertificateException {
-		ArrayList<X509Certificate> list = new ArrayList<X509Certificate>();
-		return list;
-	}
+        public List<X509Certificate> checkServerTrusted(X509Certificate[] chain, String authType, String host) throws CertificateException {
+            ArrayList<X509Certificate> list = new ArrayList<X509Certificate>();
+            return list;
+        }
 
         @Override
         public X509Certificate[] getAcceptedIssuers() {
@@ -545,7 +433,7 @@ public class Main implements IXposedHookLoadPackage {
         }
     }
 
-    private class ImSureItsLegitHostnameVerifier implements HostnameVerifier {
+    private static class ImSureItsLegitHostnameVerifier implements HostnameVerifier {
 
         @Override
         public boolean verify(String hostname, SSLSession session) {
@@ -554,7 +442,7 @@ public class Main implements IXposedHookLoadPackage {
     }
 
     /* This class creates a SSLSocket that trusts everyone. */
-    public class TrustAllSSLSocketFactory extends SSLSocketFactory {
+    public static class TrustAllSSLSocketFactory extends SSLSocketFactory {
 
         SSLContext sslContext = SSLContext.getInstance("TLS");
 
