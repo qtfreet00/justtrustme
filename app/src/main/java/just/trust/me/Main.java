@@ -216,6 +216,7 @@ public class Main implements IXposedHookLoadPackage {
                         processHttpClientAndroidLib(context.getClassLoader());
                         processXutils(context.getClassLoader());
                         processUrlConnection();
+                        processHttpProxy();
                     }
                 }
         );
@@ -495,5 +496,29 @@ public class Main implements IXposedHookLoadPackage {
             }
         });
 
+    }
+
+    private static void processHttpProxy() {
+        XposedHelpers.findAndHookMethod(System.class, "getProperty", String.class, new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                super.afterHookedMethod(param);
+                String key = (String) param.args[0];
+                if ("http.proxyHost".equals(key) || "http.proxyPort".equals(key)) {
+                    param.setResult(null);
+                }
+            }
+        });
+        XposedHelpers.findAndHookMethod(System.class, "getProperty", String.class, String.class, new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                super.afterHookedMethod(param);
+                String key = (String) param.args[0];
+                String defValue = (String) param.args[1];
+                if ("http.proxyHost".equals(key) || "http.proxyPort".equals(key)) {
+                    param.setResult(defValue);
+                }
+            }
+        });
     }
 }
